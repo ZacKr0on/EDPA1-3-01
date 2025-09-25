@@ -1,0 +1,37 @@
+git clone https://github.com/ZacKr0on/EDPA1-3-01
+cd EDPA1-3-01
+import java.io.*;
+
+public class SequentialFile<T extends ReadableData> {
+    private BufferedReader reader;
+    private String separator;
+
+    public SequentialFile(String filename, String separator) throws IOException {
+        this.reader = new BufferedReader(new FileReader(filename));
+        this.separator = separator;
+    }
+
+    public void close() throws IOException {
+        reader.close();
+    }
+
+    public T readLine(T obj) throws IOException {
+        String line = reader.readLine();
+        if (line != null) {
+            obj.readData(line, separator);
+            return obj;
+        }
+        return null;
+    }
+
+    public void skipLine() throws IOException {
+        reader.readLine();
+    }
+
+    public boolean hasNext() throws IOException {
+        reader.mark(1);
+        int i = reader.read();
+        reader.reset();
+        return i != -1;
+    }
+}
