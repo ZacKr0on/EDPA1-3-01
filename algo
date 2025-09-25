@@ -1,37 +1,153 @@
-git clone https://github.com/ZacKr0on/EDPA1-3-01
-cd EDPA1-3-01
-import java.io.*;
+/**
+ * Interfaz que obliga a las clases que representan registros leíbles
+ * a implementar la operación readData(String, String) que las inicializa
+ * a partir de una línea de texto y un separador.
+ */
+public interface ReadableData {
+    /**
+     * Lee los datos desde una línea y los asigna a los campos del objeto.
+     * @param line la línea completa leída del archivo
+     * @param separator el separador de campos usado en el CSV (por ejemplo ",")
+     */
+    void readData(String line, String separator);
+}
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
+/**
+ * Clase genérica que permite acceso secuencial a un archivo de texto.
+ * No conoce la estructura interna de cada línea: delega la lectura
+ * a objetos del tipo genérico T que implementen ReadableData.
+ *
+ * @param <T> tipo que implementa ReadableData
+ */
 public class SequentialFile<T extends ReadableData> {
-    private BufferedReader reader;
-    private String separator;
+    private final BufferedReader reader;
+    private final String separator;
+    private String nextLine;
 
     public SequentialFile(String filename, String separator) throws IOException {
         this.reader = new BufferedReader(new FileReader(filename));
         this.separator = separator;
+        this.nextLine = reader.readLine();
     }
 
     public void close() throws IOException {
         reader.close();
+        nextLine = null;
     }
 
     public T readLine(T obj) throws IOException {
-        String line = reader.readLine();
-        if (line != null) {
-            obj.readData(line, separator);
-            return obj;
-        }
-        return null;
+        if (nextLine == null) return null;
+        String line = nextLine;
+        nextLine = reader.readLine();
+        obj.readData(line, separator);
+        return obj;
     }
 
     public void skipLine() throws IOException {
-        reader.readLine();
+        if (nextLine != null) nextLine = reader.readLine();
     }
 
-    public boolean hasNext() throws IOException {
-        reader.mark(1);
-        int i = reader.read();
-        reader.reset();
-        return i != -1;
+    public boolean hasNext() {
+        return nextLine != null;
+    }
+
+    public String getSeparator() {
+        return separator;
+    }
+}
+/**
+ * Representa un registro de satélite leído desde el CSV de NORAD.
+ * Implementa ReadableData para delegar la lectura de la línea al propio objeto.
+ */
+public class Satellite implements ReadableData {
+    private String name;
+    private String internationalDesignator;
+    private String epoch;
+    private double inclination;
+    private double raan;
+    private double eccentricity;
+    private double argumentOfPericenter;
+    private double meanMotion; // órbitas por día
+
+    public Satellite() {
+    }
+
+    @Override
+    public void readData(String line, String separator) {
+        String[] parts = line.split(",(?=(?:[^\"]*\\\"[^\"]*\\\")*[^\"]*$)", -1);
+
+        try {
+            if (parts.length > 0) this.name = stripQuotes(parts[0]);
+            if (parts.length > 1) this.internationalDesignator = stripQuotes(parts[1]);
+            if (parts.length > 2) this.epoch = stripQuotes(parts[2]);
+            if (parts.length > 3) this.inclination = parseDoubleSafe(parts[3]);
+            if (parts.length > 4) this.raan = parseDoubleSafe(parts[4]);
+            if (parts.length > 5) this.eccentricity = parseDoubleSafe(parts[5]);
+            if (parts.length > 6) this.argumentOfPericenter = parseDoubleSafe(parts[6]);
+            if (parts.length > 7) this.meanMotion = parseDoubleSafe(parts[7]);
+        } catch (Exception e) {
+            // Si algún campo falla, deja valores por defecto
+        }
+    }
+
+    private static String stripQuotes(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s.startsWith("\"") && s.endsWith("\"")) {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
+    }
+
+    private static double parseDoubleSafe(String s) {
+        if (s == null) return 0.0;
+        s = stripQuotes(s);
+        if (s.isEmpty()) return 0.0;
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    public double getMeanMotion() {
+        return meanMotion;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("%s (%s) - Epoch: %s - MeanMotion: %.6f",
+                name, internationalDesignator, epoch, meanMotion);
+    }
+}
+import java.io.IOException;
+
+/**
+ * Programa principal que utiliza SequentialFile<Satellite> para leer el CSV
+ * y muestra por pantalla los satélites con más de 10 órbitas por día.
+ */
+public class Main {
+    public static void main(String[] args) {
+        String filename = (args.length > 0) ? args[0] : "gp.csv";
+        String separator = ",";
+
+        try {
+            SequentialFile<Satellite> file = new SequentialFile<>(filename, separator);
+            file.skipLine(); // saltar cabecera
+
+            while (file.hasNext()) {
+                Satellite sat = file.readLine(new Satellite());
+                if (sat != null && sat.getMeanMotion() > 10.0) {
+                    System.out.println(sat);
+                }
+            }
+
+            file.close();
+        } catch (IOException e) {
+            System.err.println("Error leyendo el fichero: " + e.getMessage());
+        }
     }
 }
